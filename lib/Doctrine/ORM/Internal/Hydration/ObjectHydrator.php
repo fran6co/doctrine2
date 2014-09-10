@@ -518,6 +518,11 @@ class ObjectHydrator extends AbstractHydrator
                     $index = $this->identifierMap[$dqlAlias][$id[$dqlAlias]];
                     $this->resultPointers[$dqlAlias] = $result[$index];
                     $resultKey = $index;
+                    if ($this->_rsm->isMixed) {
+                        $result[] = $result[$index];
+                        $resultKey = $this->resultCounter;
+                        ++$this->resultCounter;
+                    }
                 }
             }
         }
