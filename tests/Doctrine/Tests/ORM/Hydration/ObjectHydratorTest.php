@@ -1956,4 +1956,66 @@ class ObjectHydratorTest extends HydrationTestCase
         $hydrator   = new \Doctrine\ORM\Internal\Hydration\ObjectHydrator($this->_em);
         $hydrator->hydrateAll($stmt, $rsm);
     }
+
+    /**
+     * SELECT PARTIAL u.{id, status}, COUNT(p.phonenumber) numPhones
+     *   FROM User u
+     *   JOIN u.phonenumbers p
+     *  GROUP BY u.id
+     *
+     * @group DDC-3084
+     *
+     * @dataProvider provideDataForUserEntityResult
+     */
+    public function testMixedDuplicateRootEntities($userEntityKey)
+    {
+        $rsm = new ResultSetMapping;
+        $rsm->addEntityResult('Doctrine\Tests\Models\CMS\CmsUser', 'u', $userEntityKey ?: null);
+        $rsm->addFieldResult('u', 'u__id', 'id');
+        $rsm->addFieldResult('u', 'u__status', 'status');
+        $rsm->addScalarResult('sclr0', 'numPhones');
+
+        // Faked result set
+        $resultSet = array(
+            //row1
+            array(
+                'u__id' => '1',
+                'u__status' => 'developer',
+                'sclr0' => '2',
+            ),
+            array(
+                'u__id' => '2',
+                'u__status' => 'developer',
+                'sclr0' => '1',
+            ),
+            array(
+                'u__id' => '2',
+                'u__status' => 'developer',
+                'sclr0' => '3',
+            )
+        );
+
+        $stmt     = new HydratorMockStatement($resultSet);
+        $hydrator = new \Doctrine\ORM\Internal\Hydration\ObjectHydrator($this->_em);
+        $result   = $hydrator->hydrateAll($stmt, $rsm, array(Query::HINT_FORCE_PARTIAL_LOAD => true));
+
+        $this->assertEquals(3, count($result));
+
+        $this->assertInternalType('array', $result);
+        $this->assertInternalType('array', $result[0]);
+        $this->assertInternalType('array', $result[1]);
+        $this->assertInternalType('array', $result[2]);
+
+        // first user => 2 phonenumbers
+        $this->assertEquals(2, $result[0]['numPhones']);
+        $this->assertInstanceOf('Doctrine\Tests\Models\CMS\CmsUser', $result[0][$userEntityKey]);
+
+        // second user => 1 phonenumber
+        $this->assertEquals(1, $result[1]['numPhones']);
+        $this->assertInstanceOf('Doctrine\Tests\Models\CMS\CmsUser', $result[1][$userEntityKey]);
+
+        // second user => 3 phonenumber
+        $this->assertEquals(3, $result[2]['numPhones']);
+        $this->assertInstanceOf('Doctrine\Tests\Models\CMS\CmsUser', $result[2][$userEntityKey]);
+    }
 }
